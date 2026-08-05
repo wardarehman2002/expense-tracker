@@ -85,8 +85,10 @@ so it's easy to scan at a glance. Category badges are flat, solid-colour
 pills (no rotation or decorative clutter). Full dark mode is supported via
 the toggle in the top bar.
 
-## Screenshot
+## Screenshot ExpenseTracker 
 
-### ExpenseTracker 
+<img width="1542" height="3084" alt="screenshot png" src="https://github.com/user-attachments/assets/9bbdeb3c-f7ab-4257-9aeb-846a5f0590e8" />
 
-(screenshot.png.png)
+
+
+
