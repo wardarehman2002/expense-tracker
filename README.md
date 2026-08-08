@@ -10,6 +10,10 @@ React frontend talks to it over a REST API.
 
 ---
 
+## Live Demo
+
+https://expense-tracker-vert-nine-21.vercel.app
+
 ## Folder structure
 
 ```
@@ -87,6 +91,9 @@ the toggle in the top bar.
 
 ## Screenshot
 (screenshot.png)
+
+## Mongo DB 
+
 
 
 
