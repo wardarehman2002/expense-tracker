@@ -1,19 +1,25 @@
 {
   "name": "expensetracker-backend",
-  "version": "1.0.0",
-  "description": "ExpenseTracker backend - Node.js, Express, fs module",
+  "version": "2.0.0",
+  "description": "ExpenseTracker backend - Node.js, Express, MongoDB (Mongoose)",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js"
   },
-  "keywords": ["expense-tracker", "express", "nodejs"],
+  "keywords": [
+    "expense-tracker",
+    "express",
+    "nodejs",
+    "mongodb"
+  ],
   "author": "Warda",
   "license": "ISC",
   "dependencies": {
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "mongoose": "^8.24.2"
   },
   "devDependencies": {
     "nodemon": "^3.1.0"

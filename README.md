@@ -86,7 +86,9 @@ pills (no rotation or decorative clutter). Full dark mode is supported via
 the toggle in the top bar.
 
 ## Screenshot
+(screenshot.png)
 
-### ExpenseTracker 
 
-(screenshot.png.png)
+
+
+

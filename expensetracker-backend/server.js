@@ -5,9 +5,12 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 
+const connectDB = require('./config/db');
 const logger = require('./middleware/logger');
 const errorHandler = require('./middleware/errorHandler');
 const expenseRoutes = require('./routes/expenseRoutes');
+
+connectDB();
 
 const app = express();
 

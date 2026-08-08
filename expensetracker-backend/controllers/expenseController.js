@@ -1,98 +1,100 @@
 // controllers/expenseController.js
 // All business logic for the /api/expenses resource lives here.
-// Controllers never touch fs directly - they go through fileHelper.js.
+// Controllers now talk to MongoDB through the Expense model - no fs
+// involved anywhere anymore.
 
-const { readExpenses, writeExpenses } = require('../utils/fileHelper');
-
-const VALID_CATEGORIES = ['food', 'transport', 'shopping', 'utilities', 'health', 'other'];
+const mongoose = require('mongoose');
+const Expense = require('../models/Expense');
 
 /**
  * GET /api/expenses
  * Supports combinable query filters: category, search, minAmount, maxAmount
  */
-function getAllExpenses(req, res) {
-  const { category, search, minAmount, maxAmount } = req.query;
-  let expenses = readExpenses();
+async function getAllExpenses(req, res, next) {
+  try {
+    const { category, search, minAmount, maxAmount } = req.query;
+    const filter = {};
 
-  if (category) {
-    expenses = expenses.filter((expense) => expense.category === category);
+    if (category) {
+      filter.category = category;
+    }
+
+    if (search) {
+      filter.title = { $regex: search, $options: 'i' }; // case-insensitive search
+    }
+
+    if (minAmount || maxAmount) {
+      filter.amount = {};
+      if (minAmount) filter.amount.$gte = Number(minAmount);
+      if (maxAmount) filter.amount.$lte = Number(maxAmount);
+    }
+
+    const expenses = await Expense.find(filter).sort({ createdAt: 1 });
+    res.json({ success: true, count: expenses.length, data: expenses });
+  } catch (err) {
+    next(err);
   }
-
-  if (search) {
-    const searchTerm = search.toLowerCase();
-    expenses = expenses.filter((expense) => expense.title.toLowerCase().includes(searchTerm));
-  }
-
-  if (minAmount) {
-    const min = Number(minAmount);
-    expenses = expenses.filter((expense) => expense.amount >= min);
-  }
-
-  if (maxAmount) {
-    const max = Number(maxAmount);
-    expenses = expenses.filter((expense) => expense.amount <= max);
-  }
-
-  res.json({ success: true, count: expenses.length, data: expenses });
 }
 
 /**
  * GET /api/expenses/stats
- * IMPORTANT: this route must be registered BEFORE /:id in expenseRoutes.js
- * or Express will try to parse "stats" as an id.
+ * IMPORTANT: this route must be registered BEFORE /:id in expenseRoutes.js.
  */
-function getStats(req, res) {
-  const expenses = readExpenses();
+async function getStats(req, res, next) {
+  try {
+    const expenses = await Expense.find();
 
-  const totalExpenses = expenses.length;
-  const totalAmount = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+    const totalExpenses = expenses.length;
+    const totalAmount = expenses.reduce((sum, expense) => sum + expense.amount, 0);
 
-  const byCategory = {};
-  expenses.forEach((expense) => {
-    if (!byCategory[expense.category]) {
-      byCategory[expense.category] = { count: 0, total: 0 };
-    }
-    byCategory[expense.category].count += 1;
-    byCategory[expense.category].total += expense.amount;
-  });
+    const byCategory = {};
+    expenses.forEach((expense) => {
+      if (!byCategory[expense.category]) {
+        byCategory[expense.category] = { count: 0, total: 0 };
+      }
+      byCategory[expense.category].count += 1;
+      byCategory[expense.category].total += expense.amount;
+    });
 
-  let highestExpense = null;
-  let lowestExpense = null;
+    let highestExpense = null;
+    let lowestExpense = null;
 
-  expenses.forEach((expense) => {
-    if (!highestExpense || expense.amount > highestExpense.amount) {
-      highestExpense = { title: expense.title, amount: expense.amount };
-    }
-    if (!lowestExpense || expense.amount < lowestExpense.amount) {
-      lowestExpense = { title: expense.title, amount: expense.amount };
-    }
-  });
+    expenses.forEach((expense) => {
+      if (!highestExpense || expense.amount > highestExpense.amount) {
+        highestExpense = { title: expense.title, amount: expense.amount };
+      }
+      if (!lowestExpense || expense.amount < lowestExpense.amount) {
+        lowestExpense = { title: expense.title, amount: expense.amount };
+      }
+    });
 
-  res.json({
-    success: true,
-    data: {
-      totalExpenses,
-      totalAmount,
-      byCategory,
-      highestExpense,
-      lowestExpense,
-    },
-  });
+    res.json({
+      success: true,
+      data: { totalExpenses, totalAmount, byCategory, highestExpense, lowestExpense },
+    });
+  } catch (err) {
+    next(err);
+  }
 }
 
 /**
  * GET /api/expenses/:id
  */
-function getExpenseById(req, res) {
-  const expenseId = parseInt(req.params.id, 10);
-  const expenses = readExpenses();
-  const expense = expenses.find((item) => item.id === expenseId);
+async function getExpenseById(req, res, next) {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(404).json({ success: false, message: 'Expense not found' });
+    }
 
-  if (!expense) {
-    return res.status(404).json({ success: false, message: 'Expense not found' });
+    const expense = await Expense.findById(req.params.id);
+    if (!expense) {
+      return res.status(404).json({ success: false, message: 'Expense not found' });
+    }
+
+    res.json({ success: true, data: expense });
+  } catch (err) {
+    next(err);
   }
-
-  res.json({ success: true, data: expense });
 }
 
 /**
@@ -100,32 +102,25 @@ function getExpenseById(req, res) {
  * Required fields (title, amount, category) are already guaranteed present
  * by the validate middleware before this controller runs.
  */
-function createExpense(req, res) {
-  const { title, amount, category, description, date } = req.body;
+async function createExpense(req, res, next) {
+  try {
+    const { title, amount, category, description, date } = req.body;
 
-  if (!VALID_CATEGORIES.includes(category)) {
-    return res.status(400).json({
-      success: false,
-      message: `Category must be one of: ${VALID_CATEGORIES.join(', ')}`,
+    const newExpense = await Expense.create({
+      title,
+      amount: Number(amount),
+      category,
+      description,
+      date,
     });
+
+    res.status(201).json({ success: true, data: newExpense });
+  } catch (err) {
+    if (err.name === 'ValidationError') {
+      return res.status(400).json({ success: false, message: err.message });
+    }
+    next(err);
   }
-
-  const expenses = readExpenses();
-
-  const newExpense = {
-    id: Date.now(),
-    title,
-    amount: Number(amount),
-    category,
-    date: date || new Date().toISOString().split('T')[0],
-    description: description || '',
-    createdAt: new Date().toISOString(),
-  };
-
-  expenses.push(newExpense);
-  writeExpenses(expenses);
-
-  res.status(201).json({ success: true, data: newExpense });
 }
 
 /**
@@ -133,75 +128,81 @@ function createExpense(req, res) {
  * Partial update - only the fields present in req.body are changed.
  * id and createdAt can never be overwritten.
  */
-function updateExpense(req, res) {
-  const expenseId = parseInt(req.params.id, 10);
-  const expenses = readExpenses();
-  const expenseIndex = expenses.findIndex((item) => item.id === expenseId);
+async function updateExpense(req, res, next) {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(404).json({ success: false, message: 'Expense not found' });
+    }
 
-  if (expenseIndex === -1) {
-    return res.status(404).json({ success: false, message: 'Expense not found' });
+    const { id, _id, createdAt, ...updatableFields } = req.body;
+
+    const updatedExpense = await Expense.findByIdAndUpdate(req.params.id, updatableFields, {
+      new: true,
+      runValidators: true,
+    });
+
+    if (!updatedExpense) {
+      return res.status(404).json({ success: false, message: 'Expense not found' });
+    }
+
+    res.json({ success: true, data: updatedExpense });
+  } catch (err) {
+    if (err.name === 'ValidationError') {
+      return res.status(400).json({ success: false, message: err.message });
+    }
+    next(err);
   }
-
-  const { id, createdAt, ...updatableFields } = req.body;
-
-  const updatedExpense = {
-    ...expenses[expenseIndex],
-    ...updatableFields,
-    id: expenses[expenseIndex].id,
-    createdAt: expenses[expenseIndex].createdAt,
-  };
-
-  if (updatableFields.amount !== undefined) {
-    updatedExpense.amount = Number(updatableFields.amount);
-  }
-
-  expenses[expenseIndex] = updatedExpense;
-  writeExpenses(expenses);
-
-  res.json({ success: true, data: updatedExpense });
 }
 
 /**
  * DELETE /api/expenses/:id
  */
-function deleteExpense(req, res) {
-  const expenseId = parseInt(req.params.id, 10);
-  const expenses = readExpenses();
-  const expenseIndex = expenses.findIndex((item) => item.id === expenseId);
+async function deleteExpense(req, res, next) {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(404).json({ success: false, message: 'Expense not found' });
+    }
 
-  if (expenseIndex === -1) {
-    return res.status(404).json({ success: false, message: 'Expense not found' });
+    const deletedExpense = await Expense.findByIdAndDelete(req.params.id);
+    if (!deletedExpense) {
+      return res.status(404).json({ success: false, message: 'Expense not found' });
+    }
+
+    res.json({ success: true, message: 'Expense deleted successfully' });
+  } catch (err) {
+    next(err);
   }
-
-  expenses.splice(expenseIndex, 1);
-  writeExpenses(expenses);
-
-  res.json({ success: true, message: 'Expense deleted successfully' });
 }
 
 /**
  * GET /api/expenses/export (bonus)
- * Streams the expenses as a downloadable CSV file, built using only the fs
- * module's in-memory data (no extra CSV library).
+ * Streams all expenses as a downloadable CSV file.
  */
-function exportExpensesCsv(req, res) {
-  const expenses = readExpenses();
-  const headers = ['id', 'title', 'amount', 'category', 'date', 'description', 'createdAt'];
+async function exportExpensesCsv(req, res, next) {
+  try {
+    const expenses = await Expense.find();
+    const headers = ['id', 'title', 'amount', 'category', 'date', 'description', 'createdAt'];
 
-  const escapeCsvValue = (value) => {
-    const stringValue = String(value ?? '');
-    if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
-      return `"${stringValue.replace(/"/g, '""')}"`;
-    }
-    return stringValue;
-  };
+    const escapeCsvValue = (value) => {
+      const stringValue = String(value ?? '');
+      if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+        return `"${stringValue.replace(/"/g, '""')}"`;
+      }
+      return stringValue;
+    };
 
-  const rows = expenses.map((expense) => headers.map((key) => escapeCsvValue(expense[key])).join(','));
-  const csvContent = [headers.join(','), ...rows].join('\n');
+    const rows = expenses.map((expense) => {
+      const plain = expense.toJSON();
+      return headers.map((key) => escapeCsvValue(plain[key])).join(',');
+    });
+    const csvContent = [headers.join(','), ...rows].join('\n');
 
-  res.setHeader('Content-Type', 'text/csv');
-  res.setHeader('Content-Disposition', 'attachment; filename="expenses.csv"');
-  res.send(csvContent);
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="expenses.csv"');
+    res.send(csvContent);
+  } catch (err) {
+    next(err);
+  }
 }
 
 module.exports = {
